@@ -77,8 +77,14 @@ function constructPayloadWithInternalCheck(contentBuffer, internalPassword, salt
     const passwordHash = crypto.scryptSync(internalPassword, checkSalt, 32);
 
     const { iv, encryptedData } = encryptBuffer(contentBuffer, internalPassword, salt);
+    const encryptedPackage = Buffer.concat([iv, encryptedData]);
+    const insertionOffset = crypto.randomInt(encryptedPackage.length + 1);
 
-    return Buffer.concat([passwordHash, iv, encryptedData]);
+    return Buffer.concat([
+        encryptedPackage.subarray(0, insertionOffset),
+        passwordHash,
+        encryptedPackage.subarray(insertionOffset)
+    ]);
 }
 
 function encryptBuffer(bufferToEncrypt, password, salt) {
@@ -106,10 +112,13 @@ function validateAndExtractContent(decryptedPayload, expectedInternalPassword, s
         throw new Error("Decrypted payload is too short. Invalid structure.");
     }
 
-    const foundHash = decryptedPayload.subarray(0, HASH_LENGTH_BYTES);
+    const hashOffset = decryptedPayload.indexOf(expectedHash);
 
-    if (foundHash.equals(expectedHash)) {
-        const restOfPayload = decryptedPayload.subarray(HASH_LENGTH_BYTES);
+    if (hashOffset !== -1) {
+        const restOfPayload = Buffer.concat([
+            decryptedPayload.subarray(0, hashOffset),
+            decryptedPayload.subarray(hashOffset + HASH_LENGTH_BYTES)
+        ]);
 
         const { iv, encryptedContent } = parseEncryptedFile(restOfPayload);
 
